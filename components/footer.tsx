@@ -18,7 +18,7 @@ export function Footer() {
               </a>
               . Created by{" "}
               <a
-                href="https://twitter.com/nutlope"
+                href="https://x.com/nutlope"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-500 hover:text-gray-900 transition-colors  underline-offset-4 underline"
@@ -38,7 +38,7 @@ export function Footer() {
               <span className="sr-only">GitHub</span>
             </a>
             <a
-              href="https://twitter.com/nutlope"
+              href="https://x.com/nutlope"
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-600 hover:text-gray-800 transition-colors"
