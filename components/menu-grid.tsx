@@ -17,8 +17,8 @@ export function MenuGrid({ items }: MenuGridProps) {
             <Image
               src={`data:image/png;base64,${item.menuImage.b64_json}`}
               alt={item.name}
-              layout="fill"
-              objectFit="cover"
+              fill
+              className="object-cover"
             />
           </div>
           <div className="p-4">

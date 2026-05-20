@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Together } from "together-ai";
-import { z } from "zod";
-import zodToJsonSchema from "zod-to-json-schema";
+import { z, toJSONSchema } from "zod/v4";
 
 // Add observability if a Helicone key is specified, otherwise skip
 const options: ConstructorParameters<typeof Together>[0] = {};
@@ -36,7 +35,6 @@ export async function POST(request: Request) {
     messages: [
       {
         role: "user",
-        // @ts-expect-error api is not typed
         content: [
           { type: "text", text: systemPrompt },
           {
@@ -64,7 +62,7 @@ export async function POST(request: Request) {
         ),
     })
   );
-  const jsonSchema = zodToJsonSchema(menuSchema, "menuSchema");
+  const jsonSchema = toJSONSchema(menuSchema);
 
   const extract = await together.chat.completions.create({
     messages: [
@@ -79,8 +77,7 @@ export async function POST(request: Request) {
       },
     ],
     model: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
-    // @ts-expect-error - this is not typed in the API
-    response_format: { type: "json_object", schema: jsonSchema },
+    response_format: { type: "json_schema", json_schema: { name: "menuSchema", schema: jsonSchema } },
   });
 
   let menuItemsJSON;
@@ -92,13 +89,12 @@ export async function POST(request: Request) {
   // Create an array of promises for parallel image generation
   const imagePromises = menuItemsJSON.map(async (item: any) => {
     console.log("processing image for:", item.name);
-    const response = await together.images.create({
+    const response = await together.images.generate({
       prompt: `A picture of food for a menu, hyper realistic, highly detailed, ${item.name}, ${item.description}.`,
       model: "black-forest-labs/FLUX.1-schnell",
       width: 1024,
       height: 768,
       steps: 5,
-      // @ts-expect-error - this is not typed in the API
       response_format: "base64",
     });
     item.menuImage = response.data[0];
@@ -111,4 +107,4 @@ export async function POST(request: Request) {
   return Response.json({ menu: menuItemsJSON });
 }
 
-export const maxDuration = 60;
+export const maxDuration = 120;
