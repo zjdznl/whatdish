@@ -12,13 +12,14 @@
  */
 
 import OpenAI from "openai";
-import { loadConfig } from "@/lib/config";
+import { loadConfig, type GenMode } from "@/lib/config";
 import { getVisionConfig } from "@/lib/models";
 import { searchDishImages } from "@/lib/image-search";
 import { generateDishImage, getMaxImageCount } from "@/lib/image-gen";
 
 export async function POST(request: Request) {
-  const { imageBase64 } = await request.json();
+  const { imageBase64, gen_mode } = await request.json();
+  const genMode: GenMode = gen_mode === "batch" ? "batch" : "individual";
 
   if (!imageBase64) {
     return Response.json({ error: "No image provided" }, { status: 400 });
@@ -69,7 +70,7 @@ export async function POST(request: Request) {
     apiParams.reasoning_split = true;
   }
 
-  const response = await openai.chat.completions.create(apiParams);
+  const response = await openai.chat.completions.create(apiParams as any);
 
   let content = response.choices[0]?.message?.content || "";
   console.log(`[啥菜] LLM response (${content.length} chars):`, content);
@@ -90,6 +91,15 @@ export async function POST(request: Request) {
     return Response.json(
       { error: "Failed to parse menu", raw: content.slice(0, 500) },
       { status: 500 }
+    );
+  }
+
+  // 菜单检测：如果不是菜单图片，直接返回提示
+  if (menuData?.is_menu === false) {
+    console.log("[啥菜] Not a menu image, returning early");
+    return Response.json(
+      { error: "NOT_MENU", message: "这张图片似乎不是餐厅菜单，请上传清晰的菜单照片后再试。" },
+      { status: 400 }
     );
   }
 
@@ -139,13 +149,14 @@ export async function POST(request: Request) {
   });
 
   // 串行生成图片，避免 429 限流。IMAGE_GEN_MAX_COUNT 控制上限
+  // 两种模式都逐道生图，差异在前端展示：individual=卡片视图，batch=自动拼成海报
   const maxGen = getMaxImageCount();
   const needGen = itemsWithImages
     .filter((item: any) => item._needGen)
     .slice(0, maxGen);
 
   if (needGen.length > 0) {
-    console.log(`[啥菜] Generating AI images for ${needGen.length}/${itemsWithImages.filter((i: any) => i._needGen).length} dishes (max=${maxGen === Infinity ? 'all' : maxGen})...`);
+    console.log(`[啥菜] Generating AI images for ${needGen.length}/${itemsWithImages.filter((i: any) => i._needGen).length} dishes (max=${maxGen === Infinity ? 'all' : maxGen}, mode=${genMode})...`);
     for (const item of needGen) {
       const dishName = item.name_orig || item.name;
       const dishDesc = item.description_zh || "";
@@ -176,6 +187,7 @@ export async function POST(request: Request) {
       language: menuData?.language || "",
       total_items: itemsWithImages.length,
       model_used: `${config.provider}/${config.model}`,
+      gen_mode: genMode,
     },
   });
 }

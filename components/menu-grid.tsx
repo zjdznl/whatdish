@@ -3,6 +3,7 @@ import Image from "next/image";
 
 interface MenuGridProps {
   items: MenuItem[];
+  onImageClick?: (src: string) => void;
 }
 
 function PalateScore({ score }: { score: number }) {
@@ -21,7 +22,7 @@ function PalateScore({ score }: { score: number }) {
   );
 }
 
-export function MenuGrid({ items }: MenuGridProps) {
+export function MenuGrid({ items, onImageClick }: MenuGridProps) {
   return (
     <div className="space-y-8">
       {/* Group by category */}
@@ -39,15 +40,22 @@ export function MenuGrid({ items }: MenuGridProps) {
                 className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100 hover:shadow-lg transition-shadow"
               >
                 {/* Image */}
-                <div className="relative h-48 bg-gray-100">
+                <div className="relative h-48 bg-gray-100 group cursor-pointer" onClick={() => { if (item.images.length > 0) onImageClick?.(item.images[0].url); }}>
                   {item.images.length > 0 ? (
-                    <Image
-                      src={item.images[0].thumbnail_url || item.images[0].url}
-                      alt={item.name_zh}
-                      fill
-                      className="object-cover"
-                      unoptimized // 外部图片可能不是 next/image 优化的
-                    />
+                    <>
+                      <Image
+                        src={item.images[0].thumbnail_url || item.images[0].url}
+                        alt={item.name_zh}
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition flex items-center justify-center pointer-events-none">
+                        <span className="text-white text-xs bg-black/40 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">
+                          🔍 点击放大
+                        </span>
+                      </div>
+                    </>
                   ) : (
                     <div className="flex items-center justify-center h-full text-gray-400">
                       <span className="text-sm">暂无图片</span>
@@ -55,7 +63,7 @@ export function MenuGrid({ items }: MenuGridProps) {
                   )}
                   {/* Image source badge */}
                   {item.image_source && item.image_source !== "none" && (
-                    <span className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">
+                    <span className="inline-flex items-center absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full">
                       {item.image_source === "baidu" ? "百度" : item.image_source === "bing" ? "必应" : item.image_source}
                     </span>
                   )}
@@ -64,8 +72,18 @@ export function MenuGrid({ items }: MenuGridProps) {
                 {/* Info */}
                 <div className="p-4 text-left">
                   {/* Name */}
-                  <h4 className="text-lg font-bold text-gray-800">{item.name_zh}</h4>
-                  <p className="text-sm text-gray-400 mb-2">{item.name_orig}</p>
+                  <div className="flex items-baseline gap-1.5 mb-1">
+                    {item.menu_number && (
+                      <span className="text-xs font-mono bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded shrink-0">
+                        {item.menu_number}
+                      </span>
+                    )}
+                    <h4 className="text-lg font-bold text-gray-800">{item.name_zh}</h4>
+                  </div>
+                  {item.name_zh_orig && item.name_zh_orig !== item.name_zh && (
+                    <p className="text-sm text-gray-400 mb-0.5">菜单原名：{item.name_zh_orig}</p>
+                  )}
+                  <p className="text-sm text-gray-600 font-medium mb-2">{item.name_orig}</p>
 
                   {/* Price & Score */}
                   <div className="flex items-center justify-between mb-2">
@@ -77,7 +95,7 @@ export function MenuGrid({ items }: MenuGridProps) {
 
                   {/* Chinese palate note */}
                   {item.chinese_palate_note && (
-                    <div className="mb-2 px-2 py-1 bg-yellow-50 border border-yellow-100 rounded text-xs text-yellow-700">
+                    <div className="inline-flex items-center mb-2 px-2 py-1 bg-yellow-50 border border-yellow-100 rounded text-xs text-yellow-700">
                       🥢 {item.chinese_palate_note}
                     </div>
                   )}
@@ -87,14 +105,23 @@ export function MenuGrid({ items }: MenuGridProps) {
                     {item.description_zh}
                   </p>
 
+                  {/* Extra info */}
+                  {item.extra_info && (
+                    <p className="text-xs text-gray-400 mb-2">📌 {item.extra_info}</p>
+                  )}
+
                   {/* Tags */}
                   <div className="flex flex-wrap gap-1 mb-2">
                     {item.tags?.map((tag) => (
                       <span
                         key={tag}
-                        className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600"
+                        className={`inline-flex items-center text-xs px-2 py-1 rounded-full ${
+                          tag === "招牌"
+                            ? "bg-red-50 text-red-600 border border-red-100"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
                       >
-                        {tag}
+                        {tag === "招牌" && "⭐ "}{tag}
                       </span>
                     ))}
                   </div>
@@ -105,7 +132,7 @@ export function MenuGrid({ items }: MenuGridProps) {
                       {item.flavor_profile.map((flavor) => (
                         <span
                           key={flavor}
-                          className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600"
+                          className="inline-flex items-center text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600"
                         >
                           {flavor}
                         </span>

@@ -13,6 +13,63 @@ function isQwenImageModel(model: string): boolean {
   return model.startsWith("qwen-image");
 }
 
+/**
+ * 批量生图：将所有菜品信息拼接为一次 API 调用，生成一张全景菜单图。
+ * 适用场景：用户选择"全景生图"模式，省费用、速度快。
+ * @param dishListText 所有菜品的汇总文本（菜品名+描述）
+ * @returns base64 图片数据，失败返回 null
+ */
+export async function generateBatchImage(dishListText: string): Promise<string | null> {
+  const config = loadConfig().image_gen;
+
+  if (config.provider === "none") {
+    console.log("[image-gen] provider=none，跳过批量生图");
+    return null;
+  }
+
+  const p: ProviderConfig = config[config.provider];
+  if (!p.api_key || !p.model) {
+    console.log(`[image-gen] ${config.provider} 配置不完整，跳过批量生图`);
+    return null;
+  }
+
+  const template = loadConfig().prompts.image_gen_batch;
+  const fullPrompt = template.replace("$dish_list", dishListText);
+
+  console.log(`[image-gen] Batch generating with ${config.provider}/${p.model}...`);
+  console.log(`[image-gen] Batch prompt (${fullPrompt.length} chars): ${fullPrompt.slice(0, 200)}...`);
+
+  const body = buildRequestBody(config.provider, p.model, fullPrompt);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const res = await fetch(p.base_url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${p.api_key}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.error(`[image-gen] Batch API ${res.status}: ${errText.slice(0, 200)}`);
+      return null;
+    }
+
+    const data = await res.json();
+    return await extractBase64(config.provider, p.model, data);
+  } catch (e: any) {
+    console.error("[image-gen] Batch failed:", e.message);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function generateDishImage(prompt: string): Promise<string | null> {
   const config = loadConfig().image_gen;
 

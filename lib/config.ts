@@ -60,6 +60,8 @@ export interface ImageGenConfig {
 
 export interface ImageSearchConfig {
   openserp_url: string;
+  /** 可选：nginx 反代 key，不配则不带 key（兼容本地直连 OpenSERP） */
+  openserp_key?: string;
 }
 
 export interface TestConfig {
@@ -68,8 +70,11 @@ export interface TestConfig {
 
 export interface PromptConfig {
   image_gen: string;
+  image_gen_batch: string;
   vision_system: string;
 }
+
+export type GenMode = "individual" | "batch";
 
 export interface AppConfig {
   vision: VisionConfig;
@@ -102,6 +107,7 @@ export function loadConfig(): AppConfig {
     },
     image_search: {
       openserp_url: data?.image_search?.openserp_url || "",
+      openserp_key: data?.image_search?.openserp_key || "",
     },
     test: {
       max_gen_images: data?.test?.max_gen_images ?? Infinity,
@@ -109,6 +115,7 @@ export function loadConfig(): AppConfig {
     prompts: {
       vision_system: data?.prompts?.vision_system || "你是一个菜单翻译助手，识别图片中的所有文字并翻译成中文，输出JSON格式的结构化数据。",
       image_gen: data?.prompts?.image_gen || "A hyper-realistic food photo of: $dish_info. Professional food photography.",
+      image_gen_batch: data?.prompts?.image_gen_batch || "Professional food photography flat lay featuring multiple dishes: $dish_list. Restaurant quality, top-down composition.",
     },
   } as AppConfig;
 }

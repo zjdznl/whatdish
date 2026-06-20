@@ -1,0 +1,133 @@
+# ============================================================
+# 啥菜 配置文件（所有字段必须显式填写，无默认值）
+# ============================================================
+
+# --- 视觉理解模型（菜单 OCR + 结构化）---
+vision:
+  provider: custom  # qwen | doubao | custom
+
+  qwen:
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: sk-xxx
+    model: qwen3.7-plus
+
+  doubao:
+    base_url: https://ark.cn-beijing.volces.com/api/v3
+    api_key: xxx
+    model: doubao-seed-2.0-pro
+
+  custom:
+    base_url: https://api.minimaxi.com/v1
+    api_key: sk-your-minimax-api-key-here
+    model: MiniMax-M3
+    params:
+      temperature: 0.1
+      max_tokens: 4096
+      response_format: json_object
+      thinking: adaptive
+      strip_thinking: true
+
+# --- 图片生成模型（AI 生图兜底）---
+image_gen:
+  provider: minimax  # qwen | doubao | minimax | custom | none
+
+  qwen:
+    base_url: https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
+    api_key: sk-xxx
+    model: wan2.7-image
+
+  doubao:
+    base_url: https://ark.cn-beijing.volces.com/api/v3/images/generations
+    api_key: xxx
+    model: doubao-seedream-5.0
+
+  minimax:
+    base_url: https://api.minimaxi.com/v1/image_generation
+    api_key: sk-your-minimax-api-key-here
+    model: image-01
+
+  custom:
+    base_url: xxx
+    api_key: sk-xxx
+    model: xxx
+
+# --- 图片搜索（可选，不配不影响其他功能）---
+image_search:
+  openserp_url: http://localhost:7000
+
+# --- 测试控制 ---
+test:
+  max_gen_images: 1  # 一次最多生成 N 张图
+
+# --- Prompt 模板 ---
+prompts:
+  # $dish_info = 菜品名 + 描述 + 国家语境，运行时替换（逐道生图模式）
+  image_gen: |
+    A hyper-realistic, appetizing food photo of: $dish_info. Professional food photography, 45-degree angle, clean ceramic plate, natural window lighting, shallow depth of field, vibrant colors, high detail, restaurant quality, no text overlay.
+
+  # $dish_list = 所有菜品名+描述的汇总文本，运行时替换（全景生图模式）
+  image_gen_batch: |
+    Professional food photography flat lay featuring multiple dishes: $dish_list. All dishes beautifully arranged on a rustic wooden table, top-down composition, natural window lighting, vibrant colors, high detail, restaurant quality, no text overlay, no people, no utensils blocking the food.
+
+  vision_system: |
+    你是专业的海外餐厅菜单解析助手，专为中国游客服务。
+
+    ## 第一步：判断是否为菜单
+    先判断图片内容是否是一份餐厅菜单（纸质菜单、电子菜单截图、菜单牌、手写菜单等均算菜单）。
+
+    如果不是菜单（如：风景照、人物照、食物成品照、收据小票、店内环境照等），直接返回：
+    {"is_menu": false, "restaurant_name": "", "country": "", "language": "", "categories": []}
+
+    如果是菜单，继续执行以下步骤。
+
+    ## 第二步：解析菜单（核心原则：不丢失任何信息）
+    1. 高精度识别菜单中所有文字，支持常见菜单语言（英/日/韩/泰/越/法/西/德/俄/阿等）
+    2. 逐一提取每一道菜的全部信息，包括但不限于：
+       - 菜单编号/序号（如"A12""#3""①"等）
+       - 菜品名（菜单上有几种语言就全部保留，用" / "分隔）
+       - 价格（原始货币符号和数字）
+       - 菜品描述（菜单原文描述）
+       - 是否为餐厅推荐/招牌/主厨精选（菜单上的⭐🔥👍等标记）
+       - 辣度/份量/其他标注
+    3. 翻译为标准中文，基于专业知识补充：主要食材、烹饪方式、口感特点
+
+    ## 第三步：输出结构化 JSON
+
+    {
+      "is_menu": true,
+      "restaurant_name": "餐厅名称（优先查找菜单顶部、页眉、logo区、封面），确实找不到再填"未识别"",
+      "country": "菜系所属国家/地区（如泰国、日本、意大利）",
+      "language": "菜单原文语言（如英语、日语、泰语）",
+      "categories": [
+        {
+          "name_orig": "分类原文（多语言用' / '分隔）",
+          "name_zh": "分类中文翻译",
+          "items": [
+            {
+              "menu_number": "菜单编号/序号（如'A12''#3''①'等），无则填空字符串",
+              "name_orig": "菜品原文名（菜单上有几种语言就全部保留，用' / '分隔，如'Tomato Kebab / Помидор Кебаб / طماطم كباب'），确保能与菜单一一对应",
+              "name_zh_orig": "菜单上原有的中文名（如菜单本身已有中文翻译，如'苏丹什锦卡巴'），无则填空字符串",
+              "name_zh": "我们翻译的标准中文名（如'苏丹什锦烤肉'），即使菜单已有中文也要重新翻译一个更符合大陆习惯的版本",
+              "price": "价格（保留货币符号），无则填"未标注"",
+              "description_orig": "菜单原文描述（如有），无则填空字符串",
+              "description_zh": "中文描述：主要食材+烹饪方式+口感特点，不少于15字",
+              "flavor_profile": ["甜", "咸", "鲜", "辣", "酸", "奶香", "烟熏", "清爽", "麻", "苦", "蒜香", "酱香"],
+              "chinese_palate_score": 4,
+              "chinese_palate_note": "类似中国XX口味，如"类似红烧口味""接近酸辣汤"，无相似则填"无明显相似口味"",
+              "tags": ["当地特色", "招牌", "推荐", "素食", "辛辣", "清淡", "甜点", "主食", "汤品", "含猪肉", "含牛肉", "含鸡肉", "含羊肉", "含海鲜", "含酒精", "油炸", "凉拌"],
+              "extra_info": "额外信息（如辣度等级、份量大小、是否可选素食版等），无则填空字符串"
+            }
+          ]
+        }
+      ]
+    }
+
+    ## 严格规则
+    - 🔴 最重要：不丢失任何信息。菜单上的编号、多语言名、图标标记、小字备注全部保留，确保用户能拿着结果在原菜单上逐项对应
+    - 不编造任何菜品，不遗漏任何一道菜
+    - name_orig 必须包含菜单上该道菜的所有语言版本，用" / "分隔
+    - tags 只从标准标签列表中选择，不自由发挥。菜单上有⭐⭐或"Chef's Special"等标记时打"招牌"
+    - flavor_profile 只从给定列表中选择，不自创口味词
+    - chinese_palate_score：5=非常适合中国人口味，4=比较适合，3=一般可接受，2=需要适应，1=难以接受
+    - 每道菜必须有 description_zh，基于专业知识补充食材、烹饪方式、口感
+    - 只返回纯JSON，禁止任何 markdown 代码块标记、解释文字、多余符号

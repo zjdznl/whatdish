@@ -2,7 +2,8 @@
  * 图片搜索 —— 调用 OpenSERP 获取真实菜品图片。
  *
  * OpenSERP 是自部署的免费图片搜索引擎聚合，支持百度+必应。
- * Docker 部署：docker run -d -p 7000:7000 sergeevgit/openserp
+ * Docker 部署：docker run -d -p 7000:7000 karust/openserp serve -a 0.0.0.0 -p 7000
+ * 公网部署需 nginx 反代 + key 门禁保护。
  */
 import { loadConfig } from "./config";
 
@@ -17,7 +18,9 @@ export async function searchDishImages(
   context: string = "",
   maxImages: number = 3
 ): Promise<{ images: SearchResult[]; searchUrl: string; source: string }> {
-  const url = loadConfig().image_search.openserp_url;
+  const cfg = loadConfig();
+  const url = cfg.image_search.openserp_url;
+  const key = cfg.image_search.openserp_key;
   const query = encodeURIComponent(`${dishName} ${context} food dish`.trim());
   const searchUrl = `https://www.google.com/search?tbm=isch&q=${query}`;
 
@@ -27,7 +30,7 @@ export async function searchDishImages(
 
   // 尝试百度
   try {
-    const images = await fetchFromOpenSERP(url, "baidu", query, maxImages);
+    const images = await fetchFromOpenSERP(url, "baidu", query, maxImages, key);
     if (images.length > 0) {
       return { images, searchUrl, source: "baidu" };
     }
@@ -35,7 +38,7 @@ export async function searchDishImages(
 
   // 尝试必应
   try {
-    const images = await fetchFromOpenSERP(url, "bing", query, maxImages);
+    const images = await fetchFromOpenSERP(url, "bing", query, maxImages, key);
     if (images.length > 0) {
       return { images, searchUrl, source: "bing" };
     }
@@ -48,9 +51,13 @@ async function fetchFromOpenSERP(
   baseURL: string,
   engine: "baidu" | "bing",
   query: string,
-  limit: number
+  limit: number,
+  key?: string
 ): Promise<SearchResult[]> {
-  const apiUrl = `${baseURL}/${engine}/image?text=${query}&limit=${limit}`;
+  let apiUrl = `${baseURL}/${engine}/image?text=${query}&limit=${limit}`;
+  if (key) {
+    apiUrl += `&key=${key}`;
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
 
