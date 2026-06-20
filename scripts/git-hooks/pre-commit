@@ -1,36 +1,76 @@
 #!/bin/bash
-# 预提交检查：防止敏感信息提交到 Git
-# 安装：ln -sf ../../.git/hooks/pre-commit .git/hooks/pre-commit
+# 预提交检查：安全扫描 + 类型检查 + 代码规范
+# 安装：ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
 
 set -e
 
 RED='\033[0;31m'
+YELLOW='\033[0;33m'
+GREEN='\033[0;32m'
 NC='\033[0m'
 
-# 1. 检查 config.yaml 是否被暂存（删除除外，不允许新增/修改）
+# 只对暂存了 TS/TSX 文件时才跑 lint（跳过纯非代码提交）
+STAGED_TS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx)$' || true)
+
+echo ""
+
+# ============================================================
+# 1. 检查 config.yaml 是否被暂存
+# ============================================================
 if git diff --cached --name-only --diff-filter=ACMR | grep -q '^config\.yaml$'; then
   echo -e "${RED}❌ 禁止提交 config.yaml！此文件包含 API Key，已被 .gitignore 排除。${NC}"
   echo "   如需添加新配置项，请修改 config.example.yaml（不含真实 key）。"
   exit 1
 fi
 
-# 2. 扫描暂存文件的新增行中是否包含疑似真实密钥（只扫 + 开头的行，排除占位符）
-PATTERNS=(
-  'sk-[a-zA-Z0-9]{20,}'           # sk- 格式的 API key（排除短的占位符）
-)
+# ============================================================
+# 2. 扫描暂存文件中是否泄露真实 API Key
+# ============================================================
+SECRET_FOUND=false
+for pattern in 'sk-[a-zA-Z0-9]{20,}'; do
+  MATCHES=$(git diff --cached -U0 | grep '^+' | grep -v '^+++' \
+    | grep -v 'sk-xxx\|sk-your-\|sk-api-\|placeholder\|example\|your-api-key' \
+    | grep -E "$pattern" || true)
+  if [ -n "$MATCHES" ]; then
+    echo -e "${RED}⚠️  疑似真实 API Key 被提交，已拦截。${NC}"
+    echo "$MATCHES" | head -5
+    SECRET_FOUND=true
+  fi
+done
+if $SECRET_FOUND; then exit 1; fi
 
-STAGED_FILES=$(git diff --cached --name-only)
-if [ -n "$STAGED_FILES" ]; then
-  for pattern in "${PATTERNS[@]}"; do
-    # 只检查新增行（+开头），排除占位符和示例值
-    MATCHES=$(git diff --cached -U0 | grep '^+' | grep -v '^+++' | grep -v 'sk-xxx\|sk-your-\|sk-api-\|placeholder\|example\|your-api-key' | grep -E "$pattern" || true)
-    if [ -n "$MATCHES" ]; then
-      echo -e "${RED}⚠️  发现疑似真实 API Key，提交被阻止。${NC}"
-      echo "   如果这是占位符，请在模式中加入排除规则。"
-      echo "$MATCHES" | head -5
-      exit 1
-    fi
-  done
+# ============================================================
+# 3. TypeScript 类型检查
+# ============================================================
+if [ -n "$STAGED_TS" ]; then
+  echo -n "🔍 TypeScript 类型检查..."
+  if npx tsc --noEmit 2>&1; then
+    echo -e " ${GREEN}✅${NC}"
+  else
+    echo -e "\n${RED}❌ TypeScript 类型错误，请修复后再提交。${NC}"
+    exit 1
+  fi
 fi
 
-echo "✅ 敏感信息检查通过"
+# ============================================================
+# 4. ESLint 检查（仅暂存的 TS/TSX 文件）
+# ============================================================
+if [ -n "$STAGED_TS" ]; then
+  echo -n "🔍 ESLint 检查..."
+  if ls eslint.config.* >/dev/null 2>&1; then
+    ESLINT_OUT=$(npx eslint $STAGED_TS 2>&1) || true
+    if echo "$ESLINT_OUT" | grep -qE 'error|Error|✖'; then
+      echo -e " ${RED}❌${NC}"
+      echo "$ESLINT_OUT"
+      echo -e "${RED}❌ ESLint 报错，请修复后再提交。${NC}"
+      exit 1
+    else
+      echo -e " ${GREEN}✅${NC}"
+    fi
+  else
+    echo -e " ${YELLOW}跳过（未配置 eslint.config.*）${NC}"
+  fi
+fi
+
+echo -e "${GREEN}✅ 所有检查通过${NC}"
+echo ""

@@ -41,7 +41,7 @@ export async function generateBatchImage(dishListText: string): Promise<string |
 
   const body = buildRequestBody(config.provider, p.model, fullPrompt);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 300000);
 
   try {
     const res = await fetch(p.base_url, {
@@ -88,7 +88,7 @@ export async function generateDishImage(prompt: string): Promise<string | null> 
 
   const body = buildRequestBody(config.provider, p.model, prompt);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 300000);
 
   try {
     const res = await fetch(p.base_url, {
@@ -103,7 +103,7 @@ export async function generateDishImage(prompt: string): Promise<string | null> 
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      console.error(`[image-gen] API ${res.status}: ${errText.slice(0, 200)}`);
+      console.error(`[image-gen] API ${res.status} (${p.model}): ${errText.slice(0, 300)}`);
       return null;
     }
 

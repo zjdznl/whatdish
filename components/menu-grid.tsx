@@ -4,6 +4,7 @@ import Image from "next/image";
 interface MenuGridProps {
   items: MenuItem[];
   onImageClick?: (src: string) => void;
+  highlightKeys?: Set<string>;  // 用 name_orig 做 key 匹配，避免索引错位
 }
 
 function PalateScore({ score }: { score: number }) {
@@ -22,7 +23,7 @@ function PalateScore({ score }: { score: number }) {
   );
 }
 
-export function MenuGrid({ items, onImageClick }: MenuGridProps) {
+export function MenuGrid({ items, onImageClick, highlightKeys }: MenuGridProps) {
   return (
     <div className="space-y-8">
       {/* Group by category */}
@@ -34,14 +35,26 @@ export function MenuGrid({ items, onImageClick }: MenuGridProps) {
             </h3>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {group.items.map((item, idx) => (
+            {group.items.map((item, idx) => {
+              const isHighlighted = highlightKeys?.has(item.name_orig);
+              return (
               <div
                 key={`${item.name_orig}-${idx}`}
-                className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100 hover:shadow-lg transition-shadow"
+                className={`bg-white rounded-xl shadow-md overflow-hidden border hover:shadow-lg transition-all ${isHighlighted ? "border-orange-400 ring-2 ring-orange-200" : "border-gray-100"}`}
               >
+                {isHighlighted && (
+                  <div className="absolute z-10 top-2 left-2 bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full font-medium">
+                    ⭐ 推荐
+                  </div>
+                )}
                 {/* Image */}
                 <div className="relative h-48 bg-gray-100 group cursor-pointer" onClick={() => { if (item.images.length > 0) onImageClick?.(item.images[0].url); }}>
-                  {item.images.length > 0 ? (
+                  {item.gen_status === "generating" ? (
+                    <div className="flex flex-col items-center justify-center h-full">
+                      <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-gray-200 border-t-blue-400 mb-2" />
+                      <span className="text-xs text-gray-400">AI 生成中...</span>
+                    </div>
+                  ) : item.images.length > 0 && (item.images[0].thumbnail_url || item.images[0].url) ? (
                     <>
                       <Image
                         src={item.images[0].thumbnail_url || item.images[0].url}
@@ -56,6 +69,11 @@ export function MenuGrid({ items, onImageClick }: MenuGridProps) {
                         </span>
                       </div>
                     </>
+                  ) : item.gen_status === "pending" ? (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                      <div className="h-6 w-6 mb-1.5 rounded-full border-2 border-gray-200" />
+                      <span className="text-xs">排队中...</span>
+                    </div>
                   ) : (
                     <div className="flex items-center justify-center h-full text-gray-400">
                       <span className="text-sm">暂无图片</span>
@@ -63,7 +81,7 @@ export function MenuGrid({ items, onImageClick }: MenuGridProps) {
                   )}
                   {/* Image source badge */}
                   {item.image_source && item.image_source !== "none" && (
-                    <span className="inline-flex items-center absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full">
+                    <span className={`inline-flex items-center absolute top-2 ${isHighlighted ? "right-2" : "right-2"} bg-black/50 text-white text-xs px-2 py-1 rounded-full`}>
                       {item.image_source === "baidu" ? "百度" : item.image_source === "bing" ? "必应" : item.image_source}
                     </span>
                   )}
@@ -153,7 +171,8 @@ export function MenuGrid({ items, onImageClick }: MenuGridProps) {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ))}
