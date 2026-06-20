@@ -6,31 +6,25 @@ import { Inter } from "next/font/google";
 import PlausibleProvider from "next-plausible";
 
 const inter = Inter({ subsets: ["latin"] });
-const title = "PicMenu – Visualize your menu items with nice images";
-const description = "Visualize your menu items with nice images";
-const url = "https://www.picmenu.co/";
-const ogimage = "https://www.picmenu.co/og-image.png";
-const sitename = "picmenu.co";
+const title = "啥菜 WhatDish — 拍一下就知道";
+const description = "拍下外文菜单，每道菜自动翻译成中文，匹配真实图片，标注中国胃适配度。";
+const sitename = "啥菜";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(url),
   title,
   description,
   icons: {
     icon: "/favicon.ico",
   },
   openGraph: {
-    images: [ogimage],
     title,
     description,
-    url: url,
     siteName: sitename,
-    locale: "en_US",
+    locale: "zh_CN",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    images: [ogimage],
     title,
     description,
   },

@@ -1,0 +1,108 @@
+# ============================================================
+# 啥菜 配置文件（所有字段必须显式填写，无默认值）
+# ============================================================
+
+# --- 视觉理解模型（菜单 OCR + 结构化）---
+vision:
+  provider: custom  # qwen | doubao | custom
+
+  qwen:
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: sk-xxx
+    model: qwen3.7-plus
+
+  doubao:
+    base_url: https://ark.cn-beijing.volces.com/api/v3
+    api_key: xxx
+    model: doubao-seed-2.0-pro
+
+  custom:
+    base_url: https://api.minimaxi.com/v1
+    api_key: sk-api-tUW0HJIy_0d-IXUktOzTWz1ty9MFyrBWYHqu1a2YzGlMFh8sOu2it7X9RAA1sNKYrwW6owelWcT4-sRH61_ctZNei9imVEUuV3Y2HYbtGvAl3gN9KliMvvM
+    model: MiniMax-M3
+    params:
+      temperature: 0.1
+      max_tokens: 4096
+      response_format: json_object
+      thinking: adaptive
+      strip_thinking: true
+
+# --- 图片生成模型（AI 生图兜底）---
+image_gen:
+  provider: minimax  # qwen | doubao | minimax | custom | none
+
+  qwen:
+    base_url: https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
+    api_key: sk-xxx
+    model: wan2.7-image
+
+  doubao:
+    base_url: https://ark.cn-beijing.volces.com/api/v3/images/generations
+    api_key: xxx
+    model: doubao-seedream-5.0
+
+  minimax:
+    base_url: https://api.minimaxi.com/v1/image_generation
+    api_key: sk-api-tUW0HJIy_0d-IXUktOzTWz1ty9MFyrBWYHqu1a2YzGlMFh8sOu2it7X9RAA1sNKYrwW6owelWcT4-sRH61_ctZNei9imVEUuV3Y2HYbtGvAl3gN9KliMvvM
+    model: image-01
+
+  custom:
+    base_url: xxx
+    api_key: sk-xxx
+    model: xxx
+
+# --- 图片搜索（可选，不配不影响其他功能）---
+image_search:
+  openserp_url: http://localhost:7000
+
+# --- 测试控制 ---
+test:
+  max_gen_images: 1  # 一次最多生成 N 张图
+
+# --- Prompt 模板 ---
+prompts:
+  # $dish_info = 菜品名 + 描述 + 国家语境，运行时替换
+  image_gen: |
+    A hyper-realistic, appetizing food photo of: $dish_info. Professional food photography, natural lighting, restaurant quality, top-down view on a plate.
+
+  vision_system: |
+    你是一个专业的菜单翻译和分析助手，专门帮助中国游客理解海外餐厅的菜单。
+
+    你的任务：
+    1. 识别菜单图片中的所有文字（可能是任何语言：俄语、泰语、阿拉伯语、日语、韩语、法语等）
+    2. 将每道菜的信息翻译成中文
+    3. 基于你的知识，为每道菜补充：主要食材、口味描述、适合中国人口味的程度
+    4. 输出严格符合格式的结构化 JSON
+
+    ## 输出 JSON 格式
+
+    {
+      "restaurant_name": "餐厅名（如有）",
+      "country": "菜系所属国家/地区",
+      "language": "菜单原文语言",
+      "categories": [
+        {
+          "name_orig": "分类名（原文）",
+          "name_zh": "分类名（中文）",
+          "items": [
+            {
+              "name_orig": "菜名（原文）",
+              "name_zh": "菜名（中文翻译）",
+              "price": "价格（含货币符号）",
+              "description_zh": "中文描述（主要食材、烹饪方式、口味特点）",
+              "flavor_profile": ["甜", "酸", "辣", "咸", "鲜", "奶香", "烟熏"等],
+              "chinese_palate_score": 4,
+              "chinese_palate_note": "类似中国的什么口味（如'类似红烧味''接近酸辣汤'）",
+              "tags": ["推荐", "当地特色", "素食", "含猪肉", "辛辣", "清淡", "甜点", "主食", "汤品"等]
+            }
+          ]
+        }
+      ]
+
+    ## 关键要求
+
+    - chinese_palate_score 评分：5=非常符合中国人口味，4=比较符合，3=可以接受，2=需要适应，1=中国人可能难以接受
+    - 每道菜都要有 description_zh，基于你的知识补充，不要只翻译原文
+    - 价格保留原始货币符号和数字，如无则填"未标注"
+    - 不要遗漏任何菜品
+    - 只返回 JSON，不要输出任何其他文字

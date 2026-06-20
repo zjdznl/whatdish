@@ -1,110 +1,194 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { Together } from "together-ai";
-import { z, toJSONSchema } from "zod/v4";
+/**
+ * 啥菜 菜单分析 API
+ *
+ * POST /api/parseMenu
+ * Body: { imageBase64: string }
+ * Response: { menu: DishItem[] }
+ *
+ * 流水线：
+ *   1. 多模态模型 OCR + 结构化提取
+ *   2. 为每道菜搜索真实图片（OpenSERP，百度+必应）
+ *   3. 返回完整结构化结果供前端渲染
+ */
 
-// Add observability if a Helicone key is specified, otherwise skip
-const options: ConstructorParameters<typeof Together>[0] = {};
-if (process.env.HELICONE_API_KEY) {
-  options.baseURL = "https://together.helicone.ai/v1";
-  options.defaultHeaders = {
-    "Helicone-Auth": `Bearer ${process.env.HELICONE_API_KEY}`,
-    "Helicone-Property-MENU": "true",
-  };
-}
-
-const together = new Together(options);
+import OpenAI from "openai";
+import { loadConfig } from "@/lib/config";
+import { getVisionConfig } from "@/lib/models";
+import { searchDishImages } from "@/lib/image-search";
+import { generateDishImage, getMaxImageCount } from "@/lib/image-gen";
 
 export async function POST(request: Request) {
-  const { menuUrl } = await request.json();
+  const { imageBase64 } = await request.json();
 
-  console.log({ menuUrl });
-
-  if (!menuUrl) {
-    return Response.json({ error: "No menu URL provided" }, { status: 400 });
+  if (!imageBase64) {
+    return Response.json({ error: "No image provided" }, { status: 400 });
   }
 
-  const systemPrompt = `You are given an image of a menu. Your job is to take each item in the menu and convert it into the following JSON format:
+  const config = getVisionConfig();
 
-[{"name": "name of menu item", "price": "price of the menu item", "description": "description of menu item"}, ...]
+  const openai = new OpenAI({
+    baseURL: config.base_url,
+    apiKey: config.api_key,
+  });
 
-  Please make sure to include all items in the menu and include a price (if it exists) & a description (if it exists). ALSO PLEASE ONLY RETURN JSON. IT'S VERY IMPORTANT FOR MY JOB THAT YOU ONLY RETURN JSON.
-  `;
+  console.log(`[啥菜] Using model: ${config.provider}/${config.model}`);
 
-  const output = await together.chat.completions.create({
-    model: "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
+  // Step 1: 多模态模型 OCR + 结构化
+  const params = config.params || {};
+  const temperature = params.temperature ?? 0.1;
+  const max_tokens = params.max_tokens ?? 4096;
+
+  // 构建 API 请求参数（含 provider 特有参数如 MiniMax thinking）
+  const apiParams: Record<string, any> = {
+    model: config.model,
     messages: [
+      { role: "system", content: loadConfig().prompts.vision_system },
       {
         role: "user",
         content: [
-          { type: "text", text: systemPrompt },
+          { type: "text", text: "请分析这张菜单图片，输出结构化 JSON。" },
           {
             type: "image_url",
-            image_url: {
-              url: menuUrl,
-            },
+            image_url: { url: `data:image/jpeg;base64,${imageBase64}` },
           },
         ],
       },
     ],
-  });
+    max_tokens,
+    temperature,
+  };
 
-  const menuItems = output?.choices[0]?.message?.content;
-
-  // Defining the schema we want our data in
-  const menuSchema = z.array(
-    z.object({
-      name: z.string().describe("The name of the menu item"),
-      price: z.string().describe("The price of the menu item"),
-      description: z
-        .string()
-        .describe(
-          "The description of the menu item. If this doesn't exist, please write a short one sentence description."
-        ),
-    })
-  );
-  const jsonSchema = toJSONSchema(menuSchema);
-
-  const extract = await together.chat.completions.create({
-    messages: [
-      {
-        role: "system",
-        content:
-          "The following is a list of items from a menu. Only answer in JSON.",
-      },
-      {
-        role: "user",
-        content: menuItems!,
-      },
-    ],
-    model: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
-    response_format: { type: "json_schema", json_schema: { name: "menuSchema", schema: jsonSchema } },
-  });
-
-  let menuItemsJSON;
-  if (extract?.choices?.[0]?.message?.content) {
-    menuItemsJSON = JSON.parse(extract?.choices?.[0]?.message?.content);
-    console.log({ menuItemsJSON });
+  if (params.top_p !== undefined) apiParams.top_p = params.top_p;
+  if (params.response_format === "json_object") {
+    apiParams.response_format = { type: "json_object" };
+  }
+  if (params.thinking) {
+    apiParams.thinking = { type: params.thinking };
+  }
+  if (params.reasoning_split) {
+    apiParams.reasoning_split = true;
   }
 
-  // Create an array of promises for parallel image generation
-  const imagePromises = menuItemsJSON.map(async (item: any) => {
-    console.log("processing image for:", item.name);
-    const response = await together.images.generate({
-      prompt: `A picture of food for a menu, hyper realistic, highly detailed, ${item.name}, ${item.description}.`,
-      model: "black-forest-labs/FLUX.1-schnell",
-      width: 1024,
-      height: 768,
-      steps: 5,
-      response_format: "base64",
-    });
-    item.menuImage = response.data[0];
-    return item;
+  const response = await openai.chat.completions.create(apiParams);
+
+  let content = response.choices[0]?.message?.content || "";
+  console.log(`[啥菜] LLM response (${content.length} chars):`, content);
+
+  // 客户端安全网：strip_thinking 为 true 时剥离 <think> 标签
+  if (params.strip_thinking) {
+    const before = content.length;
+    content = content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    console.log(`[啥菜] Stripped <think> tags: ${before} → ${content.length} chars`);
+  }
+
+  // 解析 JSON
+  let menuData: any;
+  try {
+    menuData = parseJSON(content);
+  } catch (e) {
+    console.error("[啥菜] Failed to parse LLM response:", e);
+    return Response.json(
+      { error: "Failed to parse menu", raw: content.slice(0, 500) },
+      { status: 500 }
+    );
+  }
+
+  // Step 2: 收集所有菜品
+  const allItems: any[] = [];
+  const categories = menuData?.categories || [];
+  for (const cat of categories) {
+    for (const item of cat.items || []) {
+      allItems.push({ ...item, category_name: cat.name_zh || cat.name_orig });
+    }
+  }
+
+  // 如果 LLM 没按 categories 格式输出，尝试兼容旧格式（直接数组）
+  if (allItems.length === 0 && Array.isArray(menuData)) {
+    for (const item of menuData) {
+      allItems.push({ ...item, category_name: "" });
+    }
+  }
+
+  console.log(`[啥菜] Found ${allItems.length} dishes`);
+
+  // Step 3: 搜真实图片（并行） + AI 生图兜底（串行，避免限流）
+  const context = `${menuData?.country || ""} ${menuData?.language || ""} cuisine`;
+
+  // 先并行搜索所有菜品的图片（轻量操作）
+  const searchResults = await Promise.all(
+    allItems.map((item: any) =>
+      searchDishImages(item.name_orig || item.name, context, 3)
+    )
+  );
+
+  // 构建结果，记录哪些需要 AI 生图
+  const itemsWithImages = allItems.map((item: any, idx: number) => {
+    const searchResult = searchResults[idx];
+    const images = searchResult.images.map((img: any) => ({
+      url: img.url,
+      thumbnail_url: img.thumbnail_url,
+      title: img.title,
+    }));
+    return {
+      ...item,
+      images,
+      image_search_url: searchResult.searchUrl,
+      image_source: searchResult.source,
+      _needGen: images.length === 0, // 内部标记
+    };
   });
 
-  // Wait for all images to be generated
-  await Promise.all(imagePromises);
+  // 串行生成图片，避免 429 限流。IMAGE_GEN_MAX_COUNT 控制上限
+  const maxGen = getMaxImageCount();
+  const needGen = itemsWithImages
+    .filter((item: any) => item._needGen)
+    .slice(0, maxGen);
 
-  return Response.json({ menu: menuItemsJSON });
+  if (needGen.length > 0) {
+    console.log(`[啥菜] Generating AI images for ${needGen.length}/${itemsWithImages.filter((i: any) => i._needGen).length} dishes (max=${maxGen === Infinity ? 'all' : maxGen})...`);
+    for (const item of needGen) {
+      const dishName = item.name_orig || item.name;
+      const dishDesc = item.description_zh || "";
+      const genPrompt = `${dishName}, ${dishDesc}, ${context}`.trim();
+      const aiImage = await generateDishImage(genPrompt);
+      if (aiImage) {
+        item.images.push({
+          url: `data:image/png;base64,${aiImage}`,
+          thumbnail_url: `data:image/png;base64,${aiImage}`,
+          title: `${dishName} (AI 生成)`,
+        });
+        item.image_source = "ai_generated";
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+
+  // 清理内部标记
+  for (const item of itemsWithImages) {
+    delete (item as any)._needGen;
+  }
+
+  return Response.json({
+    menu: itemsWithImages,
+    meta: {
+      restaurant_name: menuData?.restaurant_name || "",
+      country: menuData?.country || "",
+      language: menuData?.language || "",
+      total_items: itemsWithImages.length,
+      model_used: `${config.provider}/${config.model}`,
+    },
+  });
+}
+
+function parseJSON(content: string): any {
+  let text = content.trim();
+  // 去掉 <think>...</think> 推理块（MiniMax M3 等推理模型的输出特征）
+  text = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  // 去掉 markdown 代码块
+  if (text.startsWith("```")) {
+    text = text.replace(/^```\w*\n?/, "").replace(/\n?```$/, "");
+  }
+  return JSON.parse(text);
 }
 
 export const maxDuration = 120;

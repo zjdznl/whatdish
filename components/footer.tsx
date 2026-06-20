@@ -1,4 +1,4 @@
-import { FaGithub, FaTwitter, FaLinkedin } from "react-icons/fa";
+import { FaGithub } from "react-icons/fa";
 
 export function Footer() {
   return (
@@ -7,53 +7,27 @@ export function Footer() {
         <div className="flex flex-col md:flex-row items-center justify-between">
           <div className="text-center md:text-left mb-4 md:mb-0">
             <p className="text-gray-500">
-              Powered by{" "}
+              啥菜 · 基于{" "}
               <a
-                href="https://togetherai.link/"
+                href="https://github.com/Nutlope/picmenu"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-gray-500 hover:text-gray-900 transition-colors  underline-offset-4 underline"
+                className="text-gray-500 hover:text-gray-900 transition-colors underline-offset-4 underline"
               >
-                Together AI
+                picMenu
               </a>
-              . Created by{" "}
-              <a
-                href="https://x.com/nutlope"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-gray-500 hover:text-gray-900 transition-colors  underline-offset-4 underline"
-              >
-                Hassan.
-              </a>
+              {" "}二次开发 · 面向中国游客优化
             </p>
           </div>
           <div className="flex space-x-4">
             <a
-              href="https://github.com/Nutlope/picmenu"
+              href="https://github.com/zjdznl/whatdish"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-600 hover:text-gray-800 transition-colors"
+              className="text-gray-600 hover:text-gray-800 transition-colors flex items-center gap-1"
             >
-              <FaGithub className="h-6 w-6" />
-              <span className="sr-only">GitHub</span>
-            </a>
-            <a
-              href="https://x.com/nutlope"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-gray-600 hover:text-gray-800 transition-colors"
-            >
-              <FaTwitter className="h-6 w-6" />
-              <span className="sr-only">Twitter</span>
-            </a>
-            <a
-              href="https://linkedin.com/in/nutlope"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-gray-600 hover:text-gray-800 transition-colors"
-            >
-              <FaLinkedin className="h-6 w-6" />
-              <span className="sr-only">LinkedIn</span>
+              <FaGithub className="h-5 w-5" />
+              <span className="text-sm">zjdznl/whatdish</span>
             </a>
           </div>
         </div>
